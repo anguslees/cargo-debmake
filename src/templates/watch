@@ -1,0 +1,3 @@
+version=3
+
+https://qa.debian.org/cgi-bin/fakeupstream.cgi?upstream=crates.io/{{rust_name}}

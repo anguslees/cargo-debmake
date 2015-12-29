@@ -1,0 +1,5 @@
+{{deb_srcpkg}} ({{deb_version}}) unstable; urgency=low
+
+  * Initial packaging.
+
+ -- {{deb_maint}} <{{deb_email}}>  {{rfc822date}}

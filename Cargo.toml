@@ -1,0 +1,17 @@
+[package]
+name = "cargo-debmake"
+version = "0.1.0"
+authors = ["Angus Lees <gus@inodes.org>"]
+license = "Apache-2.0"
+keywords = ["subcommand"]
+description = """
+A Cargo subcommand to generate Debian packaging boilerplate for a Rust
+package.
+"""
+
+[dependencies]
+libc = "0.2"
+time = "0.1"
+cargo = "0.6"
+rustc-serialize = "0.3"
+liquid = "0.2"

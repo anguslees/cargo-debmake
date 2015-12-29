@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+%:
+	dh $@
+
+override_dh_install:
+	dh_install -X debian * usr/share/rustsrc/{{rust_name}}-$(DEB_VERSION_UPSTREAM)
