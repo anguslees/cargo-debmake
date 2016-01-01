@@ -1,8 +1,9 @@
 extern crate cargo;
-extern crate rustc_serialize;
-extern crate liquid;
-extern crate time;
+extern crate handlebars;
 extern crate libc;
+extern crate regex;
+extern crate rustc_serialize;
+extern crate time;
 
 use std::fs;
 use std::path::Path;

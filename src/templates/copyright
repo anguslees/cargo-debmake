@@ -1,19 +1,26 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: {{rust_name}}
-Upstream-Contact:{% for item in authors %}
- {{item}}{% endfor %}
-Source: {{repository}}
+Upstream-Name: {{{rust_name}}}
+Upstream-Contact:
+{{~#each authors}}
+{{~#unless @first}}                 {{/unless}} {{{this}}}
+{{/each~}}
+Source: {{{repository}}}
 
 Files: *
-Copyright:{% for item in authors %}
- {{item}}{% endfor %}
-License: {{license}}
-{% if license contains "Apache-2.0" %}
+Copyright:
+{{~#each authors}}
+{{~#unless @first}}          {{/unless}} {{{this}}}
+{{/each~}}
+License: {{{license}}}
+{{~#matches Apache license}}
+
 License: Apache-2.0
  On Debian systems, the full text of the Apache License
  Version 2.0 can be found in the file
  `/usr/share/common-licenses/Apache-2.0'.
-{% endif %}{% if license contains "MIT" %}
+{{~/matches}}
+{{~#matches MIT license}}
+
 License: MIT
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
@@ -38,7 +45,11 @@ License: MIT
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
-{% endif %}{% if license_contents != "" %}
+{{~/matches}}
+{{~#if license_contents}}
+
 License: {{license}}
-{{ license_contents | deb_description }}
-{% endif %}
+{{#deb_description}}
+{{~license_contents}}
+{{~/deb_description}}
+{{~/if~}}

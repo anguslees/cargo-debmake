@@ -1,123 +1,120 @@
 use std;
 use std::fs;
-use std::path::PathBuf;
-use std::default::Default;
 use std::io;
 use std::io::{Read,Write};
 use std::env;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::os::linux::raw::mode_t;
 use std::os::unix::fs::OpenOptionsExt;
 
+use rustc_serialize::json::{Json,ToJson};
 use time;
-
-use liquid;
-use liquid::{Value,Context,Renderable};
+use handlebars;
+use handlebars::{Handlebars,Context};
 
 use cargo::core::Package;
 use cargo::util::{CargoError,CargoResult};
 use cargo::Config;
 
-mod filters;
+mod helpers;
 
 #[derive(Debug)]
-pub struct LiquidError(liquid::Error);
-impl std::error::Error for LiquidError {
+pub struct TemplateError(handlebars::RenderError);
+impl std::error::Error for TemplateError {
     fn description(&self) -> &str { self.0.description() }
     fn cause(&self) -> Option<&std::error::Error> { self.0.cause() }
 }
-impl std::fmt::Display for LiquidError {
+impl std::fmt::Display for TemplateError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
-impl From<LiquidError> for Box<CargoError> {
-    fn from(t: LiquidError) -> Box<CargoError> { Box::new(t) }
+impl From<TemplateError> for Box<CargoError> {
+    fn from(t: TemplateError) -> Box<CargoError> { Box::new(t) }
 }
-impl CargoError for LiquidError {}
+impl CargoError for TemplateError {}
 
 struct Template {
-    path: PathBuf,
+    path: String,
     template: String,
     mode: mode_t,
 }
 
-fn template_context<'a>(package: &Package, timestamp: &time::Tm) -> CargoResult<Context<'a>> {
+fn template_context<'a>(package: &Package, timestamp: &time::Tm) -> CargoResult<Context> {
     let md = package.manifest().metadata();
 
-    let mut ctx = Context::new();
-    filters::add_filters(&mut ctx);
+    let mut ctx = BTreeMap::new();
 
-    ctx.set_val("rust_name",
-                Value::Str(package.name().to_owned()));
-    ctx.set_val("version",
-                Value::Str(package.version().to_string()));
-    ctx.set_val("authors",
-                Value::Array(md.authors.iter().cloned().map(Value::Str).collect()));
+    ctx.insert("rust_name".to_owned(),
+               package.name().to_json());
+    ctx.insert("version".to_owned(),
+               package.version().to_string().to_json());
+    ctx.insert("authors".to_owned(),
+               Json::Array(md.authors.iter().cloned().map(|s| s.to_json()).collect()));
     if let Some(ref s) = md.license {
-        ctx.set_val("license", Value::Str(s.clone()));
+        ctx.insert("license".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.description {
-        ctx.set_val("description", Value::Str(s.trim().to_string()));
+        ctx.insert("description".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.homepage {
-        ctx.set_val("homepage", Value::Str(s.clone()));
+        ctx.insert("homepage".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.repository {
-        ctx.set_val("repository", Value::Str(s.clone()));
+        ctx.insert("repository".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.documentation {
-        ctx.set_val("documentation", Value::Str(s.clone()));
+        ctx.insert("documentation".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.license_file {
-        ctx.set_val("license_file", Value::Str(s.clone()));
+        ctx.insert("license_file".to_owned(), s.to_json());
     }
     if let Some(ref s) = md.readme {
-        ctx.set_val("readme", Value::Str(s.clone()));
+        ctx.insert("readme".to_owned(), s.to_json());
     }
 
-    ctx.set_val("depends",
-                Value::Array(package.dependencies().iter().map(
-                    |d| {
-                        let mut h = HashMap::new();
+    ctx.insert("depends".to_owned(),
+               Json::Array(package.dependencies().iter().map(
+                   |d| {
+                        let mut h = BTreeMap::new();
                         h.insert("name".to_owned(),
-                                 Value::Str(d.name().to_owned()));
+                                 d.name().to_json());
                         h.insert("version_req".to_owned(),
-                                 Value::Str(d.version_req().to_string()));
+                                 d.version_req().to_string().to_json());
                         h.insert("kind".to_owned(),
-                                 Value::Str(format!("{:?}", d.kind()).to_lowercase()));
+                                 format!("{:?}", d.kind()).to_lowercase().to_json());
                         h.insert("optional".to_owned(),
-                                 Value::Str(format!("{}", d.is_optional())));
+                                 d.is_optional().to_json());
                         h.insert("only_for_platform".to_owned(),
-                                 Value::Str(d.only_for_platform().unwrap_or_default().to_owned()));
+                                 d.only_for_platform().unwrap_or_default().to_json());
                         h.insert("debpkg".to_owned(),
-                                 Value::Str(deb_pkgname(d.name(), true)));
-                        Value::Object(h)
+                                 deb_pkgname(d.name(), true).to_json());
+                        Json::Object(h)
                     }).collect()));
 
     if let Some(ref s) = md.license_file {
         let mut contents = String::new();
         if fs::File::open(s).and_then(|mut f| f.read_to_string(&mut contents)).is_ok() {
-            ctx.set_val("license_contents", Value::Str(contents));
+            ctx.insert("license_contents".to_owned(), contents.to_json());
         }
     }
-    ctx.set_val("rfc822date",
-                Value::Str(time::strftime("%a, %d %b %Y %T %z", &timestamp).unwrap()));
-    ctx.set_val("deb_srcpkg",
-                Value::Str(deb_pkgname(package.name(), false)));
-    ctx.set_val("deb_binpkg",
-                Value::Str(deb_pkgname(package.name(), true)));
-    ctx.set_val("deb_version",
-                Value::Str(format!("{}-1", package.version())));
+    ctx.insert("rfc822date".to_owned(),
+               time::strftime("%a, %d %b %Y %T %z", &timestamp).unwrap().to_json());
+    ctx.insert("deb_srcpkg".to_owned(),
+               deb_pkgname(package.name(), false).to_json());
+    ctx.insert("deb_binpkg".to_owned(),
+               deb_pkgname(package.name(), true).to_json());
+    ctx.insert("deb_version".to_owned(),
+               format!("{}-1", package.version()).to_json());
     let username = try!(get_username());
-    ctx.set_val("deb_maint",
-                Value::Str(username));
-    ctx.set_val("deb_email",
-                Value::Str(env::var("DEBEMAIL")
-                           .or(env::var("EMAIL"))
-                           .unwrap_or("<you>@debian.org".to_owned())));
+    ctx.insert("deb_maint".to_owned(),
+               username.to_json());
+    ctx.insert("deb_email".to_owned(),
+               env::var("DEBEMAIL")
+               .or(env::var("EMAIL"))
+               .unwrap_or("<you>@debian.org".to_owned()).to_json());
 
-    Ok(ctx)
+    Ok(Context::wraps(&ctx))
 }
 
 #[cfg(unix)]
@@ -186,7 +183,7 @@ pub fn debmake(package: &Package, timestamp: &time::Tm, config: &Config) -> Carg
     macro_rules! deb_template {
         ($e:expr) => (
             Template{
-                path: PathBuf::from(concat!("debian/", $e)),
+                path: concat!("debian/", $e).to_owned(),
                 template: include_str!(concat!("../templates/", $e)).to_owned(),
                 mode: 0o666,
             })
@@ -201,22 +198,18 @@ pub fn debmake(package: &Package, timestamp: &time::Tm, config: &Config) -> Carg
         deb_template!("watch"),
         ];
 
+    let mut handlebars = Handlebars::new();
+    helpers::add_helpers(&mut handlebars);
+
     for t in templates.iter() {
-        try!(config.shell().status("Generating", &t.path.to_string_lossy()));
+        handlebars.register_template_string(&t.path, t.template.clone())
+            .expect(&t.path);
+    }
 
-        let mut options = Default::default();
-        let mut context = try!(template_context(package, timestamp));
+    let context = try!(template_context(package, timestamp));
 
-        let output = try!(
-            liquid::parse(&t.template, &mut options)
-                .and_then(|tmpl| tmpl.render(&mut context))
-                .map_err(LiquidError));
-
-        let output = match output {
-            Some(v) => v,
-            None => continue,
-        };
-
+    for t in templates.iter() {
+        try!(config.shell().status("Generating", &t.path));
         let path = package.root().join(&t.path);
 
         if let Some(p) = path.parent() {
@@ -226,9 +219,11 @@ pub fn debmake(package: &Package, timestamp: &time::Tm, config: &Config) -> Carg
         let mut f = try!(fs::OpenOptions::new()
                          .write(true)
                          .create(true)
+                         .truncate(true)
                          .mode(t.mode)
                          .open(&path));
-        try!(f.write_all(output.as_bytes()));
+        try!(handlebars.renderw(&t.path, &context, &mut f)
+             .map_err(TemplateError));
     }
 
     Ok(())

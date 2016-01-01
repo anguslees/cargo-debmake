@@ -1,16 +1,24 @@
-Source: {{deb_srcpkg}}
+Source: {{{deb_srcpkg}}}
 Section: libdevel
-Maintainer: {{deb_maint}} <{{deb_email}}>
+Maintainer: {{{deb_maint}}} <{{{deb_email}}}>
 Priority: extra
 Build-Depends: debhelper (>= 9.20141010)
-Homepage: {{homepage}}
+{{~#if homepage}}
+Homepage: {{{homepage}}}
+{{~/if}}
 Standards-Version: 3.9.6
 
-Package: {{deb_binpkg}}
+Package: {{{deb_binpkg}}}
 Architecture: all
 Section: libdevel
-Depends: ${misc:Depends}{% for d in depends %}{% if d.optional == 'false' %}, {{d.debpkg}} (>= {{d.version_req}}) [{{d.only_for_platform}}]{% endif %}{% endfor%}
-Description: {{description | strip_newlines }}
-{{description | deb_description}}
- .
- This package contains the source.
+Depends: ${misc:Depends}
+{{~#each depends}}
+{{~#unless optional}}, {{debpkg}} (>= {{version_req}})
+{{~#if only_for_platform}} [{{only_for_platform}}]{{/if}}
+{{~/unless}}
+{{~/each}}
+Description: {{#strip_newlines}}{{description}}{{/strip_newlines}}
+{{#deb_description}}
+{{~../description}}
+This package contains the source.
+{{~/deb_description~}}
